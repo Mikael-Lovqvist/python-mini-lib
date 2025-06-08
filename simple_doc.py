@@ -4,6 +4,7 @@ import simple_config as SC
 BASE_INDENT = '  '
 
 #TODO - we could add some type hints and other stuff to integrate into documentation but this is a start
+#TODO - document aliases
 
 def Create_Configuration_Documentation(config, level=0):
 	result = Title(config.title, level)
