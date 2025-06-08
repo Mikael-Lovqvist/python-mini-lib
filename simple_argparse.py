@@ -5,12 +5,6 @@ import sys
 
 APPLICATION_ARGUMENT_TYPE_LUT = dict()
 APPLICATION_ARGUMENT_GROUPS = list()
-APPLICATION_DESCRIPTION = None
-
-def Register_Description(description):
-	global APPLICATION_DESCRIPTION
-	assert APPLICATION_DESCRIPTION is None
-	APPLICATION_DESCRIPTION = description
 
 class Action_Parameter:
 	def __init__(self, argument, *aliases, help=NOT_SET, store_key=None, store_value=NOT_SET, push_to=None):
@@ -49,6 +43,10 @@ class Value_Parameter:
 
 		if self.store_value is not NOT_SET:
 			value = self.store_value
+
+		if self.type and not isinstance(value, self.type):
+			value = self.type(value)
+
 
 		if self.store_key:
 			Config_Store(value, self.store_key)
@@ -133,7 +131,6 @@ def Parse_Arguments(arguments=None):
 		arguments = sys.argv
 
 	parser = argparse.ArgumentParser(add_help=False)
-
 	Configure_Argparse_Parser(parser, APPLICATION_ARGUMENT_GROUPS)
 
 	#parser.add_argument('--save', nargs=0, action=Push_Token(target), help="Immediate action: Save current configuration to profile")

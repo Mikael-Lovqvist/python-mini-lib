@@ -1,8 +1,8 @@
 import pathlib
 
 from simple_types import Record, Field
-from simple_argparse import Assign_Argument_Type, Register_Argument_Group, Action_Parameter, Argument_Group, Value_Parameter, Parse_Arguments, Register_Description
-from simple_config import Register_Config, Factory, Settable_Once
+from simple_argparse import Assign_Argument_Type, Register_Argument_Group, Action_Parameter, Argument_Group, Value_Parameter, Parse_Arguments
+from simple_config import Register_Config, Factory, Settable_Once, Assign_Config_Format, Register_Config_Description, Read_Config
 
 # Local types
 
@@ -22,25 +22,43 @@ class Name:
 class Command:
 	value: Field(coerce=str)
 
+@Record()
+class Critical_Command:
+	value: Field(coerce=str)
+
 
 # Help argparse backend with types (useful for auto completion)
 Assign_Argument_Type(Path, pathlib.Path)
 Assign_Argument_Type(Glob, pathlib.Path)
 
+Assign_Config_Format(Name, lambda item: item.value)
+Assign_Config_Format(Path, lambda item: item.value)
+Assign_Config_Format(Glob, lambda item: item.pattern)
+Assign_Config_Format(Command, lambda item: repr(f'execute: {item.value}'))
+Assign_Config_Format(Critical_Command, lambda item: repr(f'critical execute: {item.value}'))
+
 
 # Application config
 
-Register_Description('Hot reload utility configuration')
+Register_Config_Description('Hot reload utility configuration')
 
 Register_Config('main',
 	action = Settable_Once(default='run', help='The main action of the application'),
+	config_file = Settable_Once(default='.pot-watcher.conf', help='Configuration filename'),
+	use_config_file = Settable_Once(default=True, help='Whether to use config or not'),
 	profile = Settable_Once(default=None, help='Non default profile to operate on'),
 )
 
 Register_Config('profile', 'Profile',
 	hot_matching_rules = Factory(list, help='Contains the matching rules used when matching the hot files'),
 	support_matching_rules = Factory(list, help='Contains the matching rules used when matching the support files'),
-	trigger_action_list = Factory(list, help='List of trigger actions to execute upon match'),
+	trigger_action_list = Factory(list, help=(
+		'List of trigger actions to execute upon match\n'
+		'Valid triggers are as follows\n'
+		'  critical execute: command    | Executes a command and aborts if return code is non zero\n'
+		'  execute: command             | Executes a command\n'
+		'  clear                        | Clears the screen'
+	)),
 	post_trigger_action_list = Factory(list, help='List of post trigger actions to execute after a match has been handled'),
 	default_hot_file = Settable_Once(default=None, help='Default hot file'),
 )
@@ -50,6 +68,8 @@ Register_Config('profile', 'Profile',
 
 Register_Argument_Group('Main',
 	help = Action_Parameter('--help', '-h', help='Immediate action: Show help and exit', store_key='main.action'),
+	config_file = Value_Parameter('--config-file', type=Path, help='Alternate configuration file', store_key='main.config_file'),
+	no_config = Action_Parameter('--no-config', help='Do not load any configuration', store_key='main.use_config_file', store_value=False),
 )
 
 
@@ -72,6 +92,7 @@ Register_Argument_Group('Profile',
 
 Register_Argument_Group('Trigger action',
 	command = Value_Parameter('--cmd', type=Command, help='Trigger action: Run command', push_to='profile.trigger_action_list'),
+	critical_command = Value_Parameter('--critical-cmd', type=Critical_Command, help='Trigger action: Run command and stop chain if exit status is not 0', push_to='profile.trigger_action_list'),
 	clear = Action_Parameter('--clear', help='Trigger action: Clear terminal', push_to='profile.trigger_action_list'),
 	show_stats = Action_Parameter('--show-stats', help='Post trigger action: Show timing and stats after command', push_to='profile.post_trigger_action_list'),
 )
@@ -79,8 +100,37 @@ Register_Argument_Group('Trigger action',
 
 
 if __name__ == '__main__':
-	arguments = Parse_Arguments(['t2.py', '-h', '--profile', 'mah-profile', '--clear', '--cmd', 'ls *', '--include-hot-glob', '*.py', '--save'])
 
+	from simple_config import CONFIG_TREE, CONFIG, Update_Config, Format_Value
+	#print(APPLICATION_CONFIGURATION)
+	#arguments = Parse_Arguments(['t2.py', '--default-hot-file', 'blargh', '--save', '--include-hot-glob', '*.js', '--critical-cmd', 'make stuff', '--clear', '--cmd', 'make test'])
+	arguments = Parse_Arguments(['t2.py'])
+	#arguments = Parse_Arguments(['t2.py', '-h', '--profile', 'mah-profile', '--clear', '--cmd', 'ls *', '--include-hot-glob', '*.py', '--save'])
+
+
+	if CONFIG.main.action == 'save_profile':
+		if CONFIG.main.profile is None:
+			Update_Config(CONFIG.main.config_file, {'default profile': [CONFIG_TREE.profile, CONFIG.profile]})
+		else:
+			Update_Config(CONFIG.main.config_file, {f'profile: {Format_Value(CONFIG.main.profile)}': [CONFIG_TREE.profile, CONFIG.profile]})
+
+	elif CONFIG.main.action == 'run':
+		if CONFIG.main.use_config_file:
+			#Here we must load the profile from the config file
+
+			if CONFIG.main.profile is None:
+				config = Read_Config(CONFIG.main.config_file, {'default profile': [CONFIG_TREE.profile, CONFIG.profile]})
+			else:
+				config = Read_Config(CONFIG.main.config_file, {f'profile: {Format_Value(CONFIG.main.profile)}': [CONFIG_TREE.profile, CONFIG.profile]})
+
+			print(config)
+
+
+
+	else:
+		raise Exception()
+
+	#TODO - make sure Create_Documentation works after fixing config stuff
 	#from simple_doc import Create_Documentation
 	#print('\n'.join(Create_Documentation()))
 
